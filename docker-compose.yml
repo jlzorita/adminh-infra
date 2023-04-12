@@ -1,0 +1,123 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:9092
+      - 19092:19092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092, CONNECTIONS_FROM_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONNECTIONS_FROM_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: nc -z localhost 9092 || exit -1
+      start_period: 15s
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+  db-user:
+    image: postgres
+    restart: always
+    volumes:
+      - tfg:/var/lib/postgresql/db-user
+    ports:
+      - 54322:5432
+    environment:
+      POSTGRES_USER: tfg
+      POSTGRES_PASSWORD: tfg
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-q",
+          "-d",
+          "${POSTGRES_DB:-tfg}",
+          "-U",
+          "${POSTGRES_USER:-tfg}"
+        ]
+      timeout: 35s
+      interval: 10s
+      retries: 5
+
+  db-crm:
+    image: postgres
+    restart: always
+    volumes:
+      - tfg:/var/lib/postgresql/db-crm
+    ports:
+      - 54323:5432
+    environment:
+      POSTGRES_USER: tfg
+      POSTGRES_PASSWORD: tfg
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-q",
+          "-d",
+          "${POSTGRES_DB:-tfg}",
+          "-U",
+          "${POSTGRES_USER:-tfg}"
+        ]
+      timeout: 35s
+      interval: 10s
+      retries: 5
+
+  adminer:
+    image: adminer
+    platform: linux/amd64
+    restart: always
+    ports:
+      - 18080:8080
+
+  adminh-user:
+    build:
+      context: adminh-user
+      dockerfile: Dockerfile
+    ports:
+      - "18081:18081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-user:5432/tfg
+      - SPRING_DATASOURCE_USERNAME=tfg
+      - SPRING_DATASOURCE_PASSWORD=tfg
+      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+    depends_on:
+      db-user:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  adminh-crm:
+    build:
+      context: adminh-crm
+      dockerfile: Dockerfile
+    ports:
+      - "18082:18082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-crm:5432/tfg
+      - SPRING_DATASOURCE_USERNAME=tfg
+      - SPRING_DATASOURCE_PASSWORD=tfg
+      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+    depends_on:
+      db-user:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+volumes:
+  tfg:
