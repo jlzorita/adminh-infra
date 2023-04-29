@@ -1,3 +1,4 @@
+version: '2'
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -6,6 +7,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - 22181:2181
+    networks:
+      - net
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -27,17 +30,73 @@ services:
       interval: 5s
       timeout: 10s
       retries: 10
+    networks:
+      - net
 
-  db-user:
+  db:
     image: postgres
     restart: always
     volumes:
-      - tfg:/var/lib/postgresql/db-user
+      - epcsd:/var/lib/postgresql/dbshow
+    ports:
+      - 54320:5432
+    environment:
+      POSTGRES_USER: epcsd
+      POSTGRES_PASSWORD: epcsd
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-q",
+          "-d",
+          "${POSTGRES_DB:-epcsd}",
+          "-U",
+          "${POSTGRES_USER:-epcsd}"
+        ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - net
+
+  db-admin:
+    image: postgres
+    restart: always
+    volumes:
+      - epcsd:/var/lib/postgresql/dbadmin
+    ports:
+      - 54321:5432
+    environment:
+      POSTGRES_USER: epcsd
+      POSTGRES_PASSWORD: epcsd
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-q",
+          "-d",
+          "${POSTGRES_DB:-epcsd}",
+          "-U",
+          "${POSTGRES_USER:-epcsd}"
+        ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - net
+
+  db-order:
+    image: postgres
+    restart: always
+    volumes:
+      - epcsd:/var/lib/postgresql/dborder
     ports:
       - 54322:5432
     environment:
-      POSTGRES_USER: tfg
-      POSTGRES_PASSWORD: tfg
+      POSTGRES_USER: epcsd
+      POSTGRES_PASSWORD: epcsd
     healthcheck:
       test:
         [
@@ -45,24 +104,26 @@ services:
           "pg_isready",
           "-q",
           "-d",
-          "${POSTGRES_DB:-tfg}",
+          "${POSTGRES_DB:-epcsd}",
           "-U",
-          "${POSTGRES_USER:-tfg}"
+          "${POSTGRES_USER:-epcsd}"
         ]
-      timeout: 35s
+      timeout: 45s
       interval: 10s
-      retries: 5
+      retries: 10
+    networks:
+      - net
 
-  db-crm:
+  db-review:
     image: postgres
     restart: always
     volumes:
-      - tfg:/var/lib/postgresql/db-crm
+      - epcsd:/var/lib/postgresql/dbreview
     ports:
       - 54323:5432
     environment:
-      POSTGRES_USER: tfg
-      POSTGRES_PASSWORD: tfg
+      POSTGRES_USER: epcsd
+      POSTGRES_PASSWORD: epcsd
     healthcheck:
       test:
         [
@@ -70,13 +131,15 @@ services:
           "pg_isready",
           "-q",
           "-d",
-          "${POSTGRES_DB:-tfg}",
+          "${POSTGRES_DB:-epcsd}",
           "-U",
-          "${POSTGRES_USER:-tfg}"
+          "${POSTGRES_USER:-epcsd}"
         ]
-      timeout: 35s
+      timeout: 45s
       interval: 10s
-      retries: 5
+      retries: 10
+    networks:
+      - net
 
   adminer:
     image: adminer
@@ -84,40 +147,114 @@ services:
     restart: always
     ports:
       - 18080:8080
+    networks:
+      - net
 
-  adminh-user:
+  ms-showcatalog:
     build:
-      context: adminh-user
+      context: ../cidh-ms-showcatalog
       dockerfile: Dockerfile
     ports:
-      - "18081:18081"
+      - "3001:18081"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-user:5432/tfg
-      - SPRING_DATASOURCE_USERNAME=tfg
-      - SPRING_DATASOURCE_PASSWORD=tfg
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/epcsd
+      - SPRING_DATASOURCE_USERNAME=epcsd
+      - SPRING_DATASOURCE_PASSWORD=epcsd
       - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
     depends_on:
-      db-user:
+      db:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    networks:
+      - net
 
-  adminh-crm:
+  ms-administration:
     build:
-      context: adminh-crm
+      context: ../cidh-ms-administration
       dockerfile: Dockerfile
     ports:
-      - "18082:18082"
+      - "3002:18081"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-crm:5432/tfg
-      - SPRING_DATASOURCE_USERNAME=tfg
-      - SPRING_DATASOURCE_PASSWORD=tfg
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-admin:5432/epcsd
+      - SPRING_DATASOURCE_USERNAME=epcsd
+      - SPRING_DATASOURCE_PASSWORD=epcsd
+    depends_on:
+      db-admin:
+        condition: service_healthy
+    networks:
+      - net
+
+  ms-order:
+    build:
+      context: ../cidh-ms-order
+      dockerfile: Dockerfile
+    ports:
+      - "3003:18081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-order:5432/epcsd
+      - SPRING_DATASOURCE_USERNAME=epcsd
+      - SPRING_DATASOURCE_PASSWORD=epcsd
       - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
     depends_on:
-      db-user:
+      db-order:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    networks:
+      - net
+
+  ms-review:
+    build:
+      context: ../cidh-ms-review
+      dockerfile: Dockerfile
+    ports:
+      - "3004:18081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db-review:5432/epcsd
+      - SPRING_DATASOURCE_USERNAME=epcsd
+      - SPRING_DATASOURCE_PASSWORD=epcsd
+      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+    depends_on:
+      db-review:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - net
+
+  web:
+    build:
+      context: ../cidh-web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - net
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ../cidh-monitoring/env/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+    networks:
+      - net
+      
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    env_file:
+      - ../cidh-monitoring/env/grafana.env
+    networks:
+      - net
 
 volumes:
-  tfg:
+  epcsd:
+
+
+networks:
+  net:
