@@ -139,7 +139,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=tfg
       - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
     depends_on:
-      db-user:
+      db-crm:
         condition: service_healthy
       kafka:
         condition: service_healthy
