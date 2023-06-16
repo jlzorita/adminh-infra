@@ -123,9 +123,7 @@ services:
       - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
     depends_on:
       db-user:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+        condition: service_healthy      
 
   adminh-crm:
     build:
@@ -141,9 +139,7 @@ services:
     depends_on:
       db-crm:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
-
+        
   adminh-core:
     build:
       context: adminh-core
